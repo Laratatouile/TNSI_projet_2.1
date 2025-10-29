@@ -194,13 +194,14 @@ class App:
         # initialisation des classes
         self.hitbox = Hitbox(self.dict_objets_murs)
         self.player = Player(self.hitbox, self.dict_objets_murs["entitees"]["joueur"][0])
-        self.cam_decors = CamDecors()
+        self.cam_decors = CamDecors(self.dict_objets_murs)
         self.arme = Arme(self.hitbox)
         self.getion_monstres = GetionDesMonstres(self.hitbox)
         self.ray_tracing = RayTracing(self.hitbox)
 
 
         # lancement de pyxel
+        pyxel.fullscreen(True)
         pyxel.run(self.update, self.draw)
 
 
@@ -217,8 +218,7 @@ class App:
                 self.arme.tir(self.player.x, self.player.y, self.player.direction, "balle")
                 self.player.arme_tir = "balle"
             self.arme.update(self.player.direction, [self.player.x, self.player.y])
-            self.ray_tracing.update([self.player.x, self.player.y])
-        self.cam_decors.update(self.player.x, self.player.y, self.hitbox.dict_hit)
+            self.cam_decors.update(self.player.x, self.player.y, self.hitbox.dict_hit)
 
 
 
@@ -228,7 +228,10 @@ class App:
         if self.endroit == "jeu":
             self.cam_decors.draw()
             self.getion_monstres.draw()
+            # le ray tracing n'est en fait qu'un affichage c'est pourquoi on realise les calculs dans le draw
+            self.ray_tracing.update([self.player.x, self.player.y], self.player.direction)
             self.ray_tracing.draw()
+
             self.player.draw()
             self.arme.draw()
 
@@ -269,32 +272,40 @@ class Player:
         # mouvements du joueur
         # Haut
         if pyxel.btn(pyxel.KEY_Z):
-            self.y -= self.vitesse
-            if not self.deplacement_valide():
-                self.y += self.vitesse
+            for _ in range(self.vitesse):
+                self.y -= 1
+                if not self.deplacement_valide():
+                    self.y += 1
+                else:
+                    self.bouge = True
             self.direction = 3
-            self.bouge = True
         # Bas
         if pyxel.btn(pyxel.KEY_S):
-            self.y += self.vitesse
-            if not self.deplacement_valide():
-                self.y -= self.vitesse
+            for _ in range(self.vitesse):
+                self.y += 1
+                if not self.deplacement_valide():
+                    self.y -= 1
+                else:
+                    self.bouge = True
             self.direction = 1
-            self.bouge = True
         # Droite
         if pyxel.btn(pyxel.KEY_D):
-            self.x += self.vitesse
-            if not self.deplacement_valide():
-                self.x -= self.vitesse
+            for _ in range(self.vitesse):
+                self.x += 1
+                if not self.deplacement_valide():
+                    self.x -= 1
+                else:
+                    self.bouge = True
             self.direction = 0
-            self.bouge = True
         # Gauche
         if pyxel.btn(pyxel.KEY_Q):
-            self.x -= self.vitesse
-            if not self.deplacement_valide():
-                self.x += self.vitesse
+            for _ in range(self.vitesse):
+                self.x -= 1
+                if not self.deplacement_valide():
+                    self.x += 1
+                else:
+                    self.bouge = True
             self.direction = 2
-            self.bouge = True
 
 
         # les actions du joueur
@@ -514,11 +525,18 @@ class Arme:
 ##### _____ CamDecors _____ #####
 
 class CamDecors:
-    def __init__(self):
+    def __init__(self, dictionnaire_hitbox:dict):
         # plage_x, plage_y
         self.limites_monde = [[0, 500], [0, 500]]
         self.camera = [123, 123]
         self.liste_pos_sortie = [32, 48, 64, 48]
+
+        # on cree une map qui contient les pixels avec les murs pour ne pas surcharger les calculs a chaque fois
+        self.map = [[False]*505 for _ in range(505)]
+        for (x1, y1), (x2, y2) in dictionnaire_hitbox["murs"].values():
+            for y in range(y1, y2):
+                for x in range(x1, x2):
+                    self.map[y][x] = True
 
 
     def update(self, x_player:int, y_player:int, dict_objets:dict):
@@ -541,9 +559,6 @@ class CamDecors:
 
         # dessiner toutes les choses
         for truc, objet in self.dict_objets.items():
-            if truc == "murs":
-                for position in objet.values():
-                    pyxel.rect(position[0][0], position[0][1], position[1][0]-position[0][0], position[1][1]-position[0][1], 0)
             if truc == "objets":
                 for nom, position in objet.items():
                     if nom == "sortie":
@@ -557,6 +572,31 @@ class CamDecors:
                             16,
                             5
                         )
+        for y, ligne in enumerate(self.map):
+            for x, case in enumerate(ligne):
+                if case:
+                    pyxel.blt(
+                        x, y,
+                        0,
+                        8, 0,
+                        1, 1,
+                    )
+        # il manque les murs nords et ouest du a leur position donc on les rajoutes
+        for i in range(0, 505, 5):
+            i -= 5
+            pyxel.blt(
+                -5, i,
+                0,
+                8, 0,
+                5, 5,
+            )
+            pyxel.blt(
+                i, -5,
+                0,
+                8, 0,
+                5, 5,
+            )
+                    
 
 
 
@@ -584,11 +624,19 @@ class CamDecors:
 class Hitbox:
     def __init__(self, dictionnaire_objets:dict):
         self.dict_hit = dictionnaire_objets
-        # regles de passage ou non
-        self.mur = False
+        # regles de renvoie et de passage
+        self.mur = (False, "mur")
         self.entitee = True
         self.objets = True
 
+        self.largeur_calcul = 4
+
+        # on cree une map qui contient les pixels avec les murs pour ne pas surcharger les calculs a chaque fois
+        self.map = [[False]*505 for _ in range(505)]
+        for (x1, y1), (x2, y2) in self.dict_hit["murs"].values():
+            for y in range(y1, y2):
+                for x in range(x1, x2):
+                    self.map[y][x] = True
 
 
     def update(self, entitee_nom:str, entitee_position:list[int, int]=[0, 0]) -> bool:
@@ -600,32 +648,126 @@ class Hitbox:
             False si le mouvment n'est pas valide
             soit True + "rien" si le mouvement est valide
             soit True + "objet" + type_objet si on touche un objet
-            soit True + "ennemi"
+            soit True + "entitee" si on touche un ennemis
         """
-        entitee_hitbox = [
-            [entitee_position[0], entitee_position[1]],
-            [entitee_position[0]+16, entitee_position[1]+16]
-        ]
+
+        # calculer les choses necessaires aux hitbox
+        if entitee_nom in ["joueur", "monstre"]:
+            largeur = hauteur = 16
+            entitee_hitbox = [
+                [entitee_position[0], entitee_position[1]],
+                [entitee_position[0]+16, entitee_position[1]+16]
+            ]
+        elif entitee_nom in ["lumiere"]:
+            largeur = hauteur = 1
+            entitee_hitbox = [
+                [entitee_position[0], entitee_position[1]],
+                [entitee_position[0]+1, entitee_position[1]+1]
+            ]
+        elif entitee_nom in ["balle"]:
+            largeur = 8
+            hauteur = 5
+            entitee_hitbox = [
+                [entitee_position[0]+8, entitee_position[1]+5],
+                [entitee_position[0]+16, entitee_position[1]+10]
+            ]
+        else:
+            largeur = 16
+            hauteur = 16
+
+
+        # calcul des hitbox
+
+        # les murs
+        # si c'est un objet qui a besoin d'un calcul complet
+        if entitee_nom in ["joueur", "monstre", "balle"]:
+            try:
+                retour = self.murs_complet(entitee_position, largeur, hauteur)
+            except:
+                retour = None
+            if retour != None:
+                return retour
+        else:
+            retour = self.murs_simple(entitee_position)
+            if retour != None:
+                return retour
+
+
+        # la lumiere s'arrete ici elle n'a pas besoin de faire plus de calculs
         if entitee_nom == "lumiere":
-            entitee_hitbox = [(entitee_position[0], entitee_position[1]), (entitee_position[0], entitee_position[1])]
-        if not entitee_nom in ["balle", "lumiere"]:
-            self.dict_hit["entitees"][entitee_nom] = entitee_hitbox
-
-
-        # faire l'iteration pour les murs
-        for nom, objets in self.dict_hit["murs"].items():
-            # si un coin de l'entitee se trove dans l'objet
-            for point_hitbox in entitee_hitbox:
-                if objets[0][0] <= point_hitbox[0] <= objets[1][0] and objets[0][1] <= point_hitbox[1] <= objets[1][1]:
-                    return self.mur, "mur", nom
-            
-            # si un coin du mur se trouve dans l'entitee
-            for point_obj in objets:
-                if entitee_hitbox[0][0] <= point_obj[0] <= entitee_hitbox[1][0] and entitee_hitbox[0][1] <= point_obj[1] <= entitee_hitbox[1][1]:
-                    return self.mur, "mur", nom
+            return True, "rien"
 
 
         # faire l'iteration pour les entities
+        retour = self.entitees(entitee_position, entitee_hitbox, entitee_nom)
+        if retour != None:
+            return retour, "entitee"
+
+            
+        # si l'entitee n'est pas le joueur alors elle n'a pas besoin des objets
+        if entitee_nom != "joueur":
+            return True, "rien"
+
+
+        # objet
+        retour = self.objet(entitee_hitbox)
+        if retour != None:
+            return retour
+        
+
+
+        # la position est correcte
+        return True, "rien"
+    
+
+
+    
+
+
+    def murs_complet(self, entitee_position:list, largeur:int, hauteur:int) -> tuple:
+        """
+            calcule si un mur se trouve dans un objet completement
+        """
+        # detection d'un mur dans le personnage
+        for decalage in range(self.largeur_calcul):
+            # pour les cotes haut et bas
+            for i in range(decalage, largeur - decalage):
+                # haut
+                if self.map[entitee_position[1] + decalage][entitee_position[0] + i] == True:
+                    return self.mur
+                # bas
+                if self.map[entitee_position[1] + hauteur - decalage*2][entitee_position[0] + i] == True:
+                    return self.mur
+            # les cotes de droite et de gauche
+            for i in range(decalage, hauteur - decalage):
+                # gauche
+                if self.map[entitee_position[1] + i][entitee_position[0] + decalage] == True:
+                    return self.mur
+                # droite
+                if self.map[entitee_position[1] + i][entitee_position[0] + largeur - decalage] == True:
+                    return self.mur
+    
+        return None
+    
+
+    def murs_simple(self, entitee_position:list) -> tuple:
+        """
+            realise un calcul simple pour savoir si un objet est dans un mur ou non
+            fonction utilie pour le calcul des lumieres qui peux provoquer des lags extremes
+        """
+        if 0 <= entitee_position[0] < 500 and 0 <= entitee_position[1] < 500:
+            if self.map[entitee_position[1]][entitee_position[0]] == True:
+                return self.mur
+        else:
+            return self.mur
+        return None
+    
+    
+
+    def entitees(self, entitee_position:list, entitee_hitbox:list, entitee_nom:str) -> tuple:
+        """
+            calcule si l'objet est dans une entitee
+        """
         for cle, objets in self.dict_hit["entitees"].items():
             # si l'entite est nous meme
             if cle == entitee_nom:
@@ -640,14 +782,14 @@ class Hitbox:
             for point_obj in objets:
                 if entitee_hitbox[0][0] < point_obj[0] < entitee_hitbox[1][0] and entitee_hitbox[0][1] < point_obj[1] < entitee_hitbox[1][1]:
                     return self.entitee, ("entitee" if cle != "joueur" else "joueur")
+        
+        return None
+    
 
-
-            
-        # si l'entitee n'est pas le joueur alors elle n'a pas besoin des objets
-        if entitee_nom != "joueur":
-            return True, "rien"
-
-        # les objets
+    def objet(self, entitee_hitbox:list):
+        """
+            detecte si l'entitee est sur un objet
+        """
         # faire l'iteration pour les objets
         for objets in self.dict_hit["objets"].values():
             # si un coin de l'entitee se trove dans l'objet
@@ -659,10 +801,11 @@ class Hitbox:
             for point_obj in objets:
                 if entitee_hitbox[0][0] < point_obj[0] < entitee_hitbox[1][0] and entitee_hitbox[0][1] < point_obj[1] < entitee_hitbox[1][1]:
                     return self.objets, "objets"
+                
+        return None
+    
 
 
-        # si la position est correcte
-        return True, "rien"
 
 
 
@@ -792,51 +935,80 @@ class Monstre:
 
 
 
-##### _____ raytracing _____ #####
+##### _____ ray tracing _____ #####
 # Pour le raytracing j'ai choisi un rayon qui part du personnage et qui va tout droit selon un angle
 # On pourra modifier l'angle de vision de la camera et on pourra aussi modifier le nombre de rayons calcules pour eviter de faire trop ralentir le jeu.
-# Pour calculer les cases eclairees on creera un rayon qu'on agrandira de 0.3 pixel a chaque iteration jusqu'a tomber sur une case de mur.
+# Pour calculer les cases eclairees on creera un rayon qu'on agrandira de 1 pixel a chaque iteration jusqu'a tomber sur une case de mur.
 
 class RayTracing:
-    def __init__(self, hitbox):
+    def __init__(self, hitbox:object):
         self.hitbox = hitbox
-        angle = 60
-        nombre_rayons = 50
+        self.precision = 1
 
-
-        self.g_lumiere = [[False]*500]*500
+        # creer une liste avec tous les rayons a tester
+        angle = 90
+        nombre_rayons = 200
         decalage_angle = angle / nombre_rayons
         self.liste_angles = [-(angle/2) + i*decalage_angle for i in range(nombre_rayons)]
-        print(len(self.liste_angles))
 
+        # la grille qui contiendra les pixels qui pourront etre affiches car sous la lumiere
+        self.g_lumiere = [[False]*505 for _ in range(505)]
     
-    def update(self, pos_perso:list):
-        self.g_lumiere = [[False]*500]*500
+
+    def update(self, pos_perso:list, direction:int):
+        # calculer la position de depart de la lumiere
+        if direction == 0:
+            pos_perso[0] += 15
+            pos_perso[1] += 7
+        elif direction == 1:
+            pos_perso[0] += 8
+            pos_perso[1] += 15
+        elif direction == 2:
+            pos_perso[1] += 7
+        else:
+            pos_perso[0] += 7
+
+
+        self.g_lumiere = [[False]*505 for _ in range(505)]
         x, y = pos_perso
+        # pour chaque rayon
         for angle in self.liste_angles:
-            longueur = 0
-            mur = False
-            while True:
-                decalage_x = longueur*math.cos(math.radians(angle))
-                decalage_y = longueur*math.sin(math.radians(angle))
+            self.calcul_rayon(x, y, angle, direction)
 
-                position_x = decalage_x + x
-                position_y = y + (decalage_y if angle >= 0 else -decalage_y)
-
-                pixel_x = round(position_x)
-                pixel_y = round(position_y)
-
-                if pixel_x >= 500:
-                    break
-                elif pixel_y >= 500:
-                    break
-
-                if not self.hitbox.update("lumiere", [pixel_x, pixel_y])[0]:
-                    break
-
-                self.g_lumiere[pixel_y][pixel_x] = True
-
+        
+    def calcul_rayon(self, pos_x:int, pos_y:int, angle:float, direction:int):
+        """
+            calcule le rayon jusqu'a tomber sur la couleur 11
+        """
+        longueur = 0
+        position_x, position_y = pos_x, pos_y
+        while self.hitbox.update("lumiere", [position_x, position_y])[0]:
+            for _ in range(self.precision):
                 longueur += 1
+                self.g_lumiere[position_y][position_x] = True
+                position_x, position_y = self.calculer_pos_pixel(pos_x, pos_y, angle, longueur, direction)
+
+
+    def calculer_pos_pixel(self, pos_x:int, pos_y:int, angle:float, longueur:float, direction:int) -> tuple:
+        """
+            calcule la position d'un pixel avec les informations donnees
+        """
+        position = []
+        # calculer x et y pour une orientation de 0 mais on changera dans l'ajout
+        decalage_x = round(longueur*math.cos(math.radians(angle)))
+        decalage_y = round(longueur*math.sin(math.radians(angle)))
+        # les ajouter
+        # direction de base
+        if direction == 0:
+            position = [pos_x + decalage_x, pos_y + decalage_y]
+        elif direction == 1:
+            position = [pos_x - decalage_y, pos_y + decalage_x]
+        elif direction == 2:
+            position = [pos_x - decalage_x, pos_y + decalage_y]
+        else:
+            position = [pos_x + decalage_y, pos_y - decalage_x]
+        
+        return position
 
 
 
@@ -861,7 +1033,7 @@ class RayTracing:
 # Hitbox
 # GetionDesMontres
 # Monstres
-# raytracing
+# ray tracing
 
 
 
