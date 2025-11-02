@@ -24,7 +24,17 @@ class App:
         # initialisation des variables
         self.dict_objets_murs = {
             "objets" : {
-                "sortie" : [(155, 395), (171, 411)]
+                "sortie" : [(155, 395), (171, 411)],
+                "vie_0" : [(125, 155), (141, 161)],
+                "vie_1" : [(485, 160), (501, 176)],
+                "vie_2" : [(5, 275), (21, 291)],
+                "balle_0" : [(270, 100), (286, 116)],
+                "balle_1" : [(445, 30), (461, 46)],
+                "balle_2" : [(395, 310), (411, 326)],
+                "balle_3" : [(325, 365), (341, 381)],
+                "masse_0" : [(385, 305), (401, 321)],
+                "masse_1" : [(95, 185), (111, 201)],
+                "masse_2" : [(35, 395), (51, 411)]
             },
             "murs" : {
                 # ceux du contour de la map
@@ -174,8 +184,10 @@ class App:
                 "mur_138" : [(200, 450), (205, 475)],
                 "mur_139" : [(165, 475), (230, 480)]
             },
+            "joueur" : {
+                "joueur" : [(35, 35), (51, 51)]
+            },
             "entitees" : {
-                "joueur" : [(35, 35), (51, 51)],
                 "monstre_1" : [(5, 5), (21, 21)],
                 "monstre_2" : [(235, 35), (241, 41)],
                 "monstre_3" : [(5, 235), (21, 241)],
@@ -190,26 +202,46 @@ class App:
             }
         }
         self.endroit = "jeu"
+
+
+        
+
+        ###  /!\ parametres du ray tracing  ###
+
+        self.dict_ray_tracing = {
+            "on" : False,
+            "precision" : 4,
+            "angle" : 90,
+            "nombre_rayons" : 200
+        }
+        plein_ecran = False
+
+
+
         
         # initialisation des classes
         self.hitbox = Hitbox(self.dict_objets_murs)
-        self.player = Player(self.hitbox, self.dict_objets_murs["entitees"]["joueur"][0])
+        self.player = Player(self.hitbox, [self.dict_objets_murs["joueur"]["joueur"][0][0], self.dict_objets_murs["joueur"]["joueur"][0][1]])
         self.cam_decors = CamDecors(self.dict_objets_murs)
         self.arme = Arme(self.hitbox)
         self.getion_monstres = GetionDesMonstres(self.hitbox)
-        self.ray_tracing = RayTracing(self.hitbox)
+        if self.dict_ray_tracing["on"]:
+            self.ray_tracing = RayTracing(self.hitbox, self.dict_ray_tracing["precision"], self.dict_ray_tracing["angle"], self.dict_ray_tracing["nombre_rayons"])
+        self.ui = UI(self.player, self.cam_decors)
 
 
         # lancement de pyxel
-        pyxel.fullscreen(True)
+        pyxel.fullscreen(plein_ecran)
         pyxel.run(self.update, self.draw)
 
 
 
 
     def update(self):
+        # si on joue
         if self.endroit == "jeu":
-            self.player.update()
+            if self.player.update() in [-1, 1]:
+                self.endroit = "sortie"
             self.getion_monstres.update()
             if self.player.arme_tir[0] == "explosion" and self.player.arme_tir[1] == True:
                 self.arme.tir(self.player.x, self.player.y, self.player.direction, "explosion")
@@ -218,7 +250,20 @@ class App:
                 self.arme.tir(self.player.x, self.player.y, self.player.direction, "balle")
                 self.player.arme_tir = "balle"
             self.arme.update(self.player.direction, [self.player.x, self.player.y])
-            self.cam_decors.update(self.player.x, self.player.y, self.hitbox.dict_hit)
+            self.cam_decors.update(self.player.x, self.player.y, self.hitbox.dict_pos_entitee, self.hitbox.dict_pos_objets)
+            self.ui.update()
+
+            if pyxel.btnp(pyxel.KEY_K):
+                with open("file.txt", "w") as fichier:
+                    for layer in self.hitbox.map:
+                        ligne = ""
+                        for case in layer:
+                            ligne += str(case)[0]
+                        fichier.write(ligne)    
+
+        # si on est sorti du labyrinthe
+        elif self.endroit == "sortie":
+            pyxel.quit()
 
 
 
@@ -229,121 +274,15 @@ class App:
             self.cam_decors.draw()
             self.getion_monstres.draw()
             # le ray tracing n'est en fait qu'un affichage c'est pourquoi on realise les calculs dans le draw
-            self.ray_tracing.update([self.player.x, self.player.y], self.player.direction)
-            self.ray_tracing.draw()
+            if self.dict_ray_tracing["on"]:
+                self.ray_tracing.update([self.player.x, self.player.y], self.player.direction)
+                self.ray_tracing.draw()
 
             self.player.draw()
             self.arme.draw()
+            self.ui.draw()
 
 
-
-
-
-
-
-
-
-
-
-
-
-##### _____ Player _____ #####
-
-class Player:
-    def __init__(self, hitbox:object, position:list=[int, int]):
-        # ses variables
-        self.x, self.y = position
-        # la classe qui gere les hitbox
-        self.hitbox = hitbox
-        self.arme_tir = "balle", False
-        # direction 0 : droite, 1 : bas, 2 : gauche, 3 : haut
-        self.direction = 0
-        self.vitesse = 3
-        # les positions pour que le perso bouge
-        self.pos_perso = [[16, 24], [0, 8], [16, 8], [0, 24]]
-        self.mega_player = False
-
-
-    def update(self):
-        # initialisations des variables au debut de chaque iteration
-        self.bouge = False
-
-
-        # mouvements du joueur
-        # Haut
-        if pyxel.btn(pyxel.KEY_Z):
-            for _ in range(self.vitesse):
-                self.y -= 1
-                if not self.deplacement_valide():
-                    self.y += 1
-                else:
-                    self.bouge = True
-            self.direction = 3
-        # Bas
-        if pyxel.btn(pyxel.KEY_S):
-            for _ in range(self.vitesse):
-                self.y += 1
-                if not self.deplacement_valide():
-                    self.y -= 1
-                else:
-                    self.bouge = True
-            self.direction = 1
-        # Droite
-        if pyxel.btn(pyxel.KEY_D):
-            for _ in range(self.vitesse):
-                self.x += 1
-                if not self.deplacement_valide():
-                    self.x -= 1
-                else:
-                    self.bouge = True
-            self.direction = 0
-        # Gauche
-        if pyxel.btn(pyxel.KEY_Q):
-            for _ in range(self.vitesse):
-                self.x -= 1
-                if not self.deplacement_valide():
-                    self.x += 1
-                else:
-                    self.bouge = True
-            self.direction = 2
-
-
-        # les actions du joueur
-        if pyxel.btnp(pyxel.MOUSE_BUTTON_LEFT):
-            if self.mega_player == True:
-                self.arme_tir = "explosion", True
-            else:
-                self.arme_tir = "balle", True
-            
-
-
-    def deplacement_valide(self):
-        return self.hitbox.update("joueur", [self.x, self.y])[0]
-        
-        
-
-
-
-    def draw(self):
-        # le personnage
-        if self.bouge:
-            perso_nombre = self.calcul_nombre_temps(4, 2)
-        else:
-            perso_nombre = 3
-        pyxel.blt(self.x,
-            self.y,
-            0,
-            self.pos_perso[perso_nombre][0],
-            self.pos_perso[perso_nombre][1],
-            (-16 if self.direction == 2 else 16),
-            16,
-            5,
-            rotate=((90 * self.direction) if (90 * self.direction) != 180 else 0)
-        )
-
-
-    def calcul_nombre_temps(self, nombre_max:int, vitesse:int=5) -> int:
-        return pyxel.frame_count // vitesse % nombre_max
 
 
 
@@ -401,7 +340,7 @@ class Arme:
             elif balle[2] == 1:
                 balle[1] += self.vitesse
                 retour = self.hitbox.update("balle", [balle[0], balle[1]])
-                if retour[0] == False or retour in [[True, "entitee"]]:
+                if retour[0] == False or retour[1] == "entitee":
                     balle[1] -= self.vitesse
                     if balle[4] == "explosion":
                         self.explosion(balle[0], balle[1])
@@ -426,7 +365,7 @@ class Arme:
 
 
 
-        # calculer la position du coup de feu du fusil si il a tire recement
+        # calculer la position du coup de feu du fusil si il a tire
         if self.infos_tir != None:
             # calcul des positions x et y du coup de feu
             if direction == 0:
@@ -527,9 +466,9 @@ class Arme:
 class CamDecors:
     def __init__(self, dictionnaire_hitbox:dict):
         # plage_x, plage_y
-        self.limites_monde = [[0, 500], [0, 500]]
-        self.camera = [123, 123]
+        self.camera = [-5, -5]
         self.liste_pos_sortie = [32, 48, 64, 48]
+        self.couleur_mur = 0
 
         # on cree une map qui contient les pixels avec les murs pour ne pas surcharger les calculs a chaque fois
         self.map = [[False]*505 for _ in range(505)]
@@ -539,16 +478,28 @@ class CamDecors:
                     self.map[y][x] = True
 
 
-    def update(self, x_player:int, y_player:int, dict_objets:dict):
-        self.dict_objets = dict_objets
-        # calculer le deplcement possible
-        if self.limites_monde[0][0]+123 <= x_player <= self.limites_monde[1][1]-123 and self.limites_monde[1][0]+123 <= y_player <= self.limites_monde[1][1]-123:
-            self.camera = [x_player, y_player]
-        elif self.limites_monde[0][0]+123 <= x_player <= self.limites_monde[1][1]-123:
-            self.camera[0] = x_player
-        elif self.limites_monde[1][0]+123 <= y_player <= self.limites_monde[1][1]-123:
-            self.camera[1] = y_player
 
+
+    def update(self, x_player:int, y_player:int, dict_pos_entitee:dict, dict_pos_objets:dict) -> None:
+        self.dict_pos_entitee = dict_pos_entitee
+        self.dict_pos_objets = dict_pos_objets
+
+        
+        # reajuster la camera en x
+        if -5 <= x_player <= 100:
+            self.camera[0] = -5
+        elif 422 <= x_player <= 500:
+            self.camera[0] = 294
+        else:
+            self.camera[0] = x_player - 103
+        # et en y
+        if -5 <= y_player <= 128:
+            self.camera[1] = -5
+        elif 372 <= y_player <= 500:
+            self.camera[1] = 244
+        else:
+            self.camera[1] = y_player - 128
+        
 
 
 
@@ -558,54 +509,77 @@ class CamDecors:
 
 
         # dessiner toutes les choses
-        for truc, objet in self.dict_objets.items():
-            if truc == "objets":
-                for nom, position in objet.items():
-                    if nom == "sortie":
-                        pyxel.blt(
-                            position[0][0],
-                            position[0][1],
-                            0,
-                            self.liste_pos_sortie[self.calcul_nombre_temps(4, 7)],
-                            32,
-                            16,
-                            16,
-                            5
-                        )
+        for nom, (x, y, l, h) in self.dict_pos_objets.items():
+            if nom == "sortie":
+                pyxel.blt(
+                    x,
+                    y,
+                    0,
+                    self.liste_pos_sortie[self.calcul_nombre_temps(4, 7)],
+                    32,
+                    16,
+                    16,
+                    5
+                )
+            elif nom.startswith("vie"):
+                pyxel.blt(
+                    x,
+                    y,
+                    0,
+                    51, 203,
+                    10, 10,
+                    5
+                )
+            elif nom.startswith("balle"):
+                pyxel.blt(
+                    x,
+                    y,
+                    0,
+                    3, 203,
+                    10, 10,
+                    5
+                )
+            elif nom.startswith("masse"):
+                pyxel.blt(
+                    x,
+                    y,
+                    0,
+                    19, 203,
+                    10, 10,
+                    5
+                )
         for y, ligne in enumerate(self.map):
             for x, case in enumerate(ligne):
-                if case:
-                    pyxel.blt(
+                if case == 1:
+                    pyxel.rect(
                         x, y,
-                        0,
-                        8, 0,
                         1, 1,
+                        self.couleur_mur
                     )
         # il manque les murs nords et ouest du a leur position donc on les rajoutes
-        for i in range(0, 505, 5):
-            i -= 5
-            pyxel.blt(
-                -5, i,
-                0,
-                8, 0,
-                5, 5,
-            )
-            pyxel.blt(
-                i, -5,
-                0,
-                8, 0,
-                5, 5,
-            )
+        pyxel.rect(
+            -5, -5,
+            500, 5,
+            self.couleur_mur
+        )
+        pyxel.rect(
+            -5, -5,
+            5, 500,
+            self.couleur_mur
+        )
                     
 
 
-
-        pyxel.camera(self.camera[0]-128, self.camera[1]-128)
+        pyxel.camera(self.camera[0], self.camera[1])
 
 
     
     def calcul_nombre_temps(self, nombre_max:int, vitesse:int=5) -> int:
         return pyxel.frame_count // vitesse % nombre_max
+    
+
+    def recup_camera(self):
+        return self.camera
 
 
 
@@ -622,98 +596,137 @@ class CamDecors:
 ##### _____ Hitbox _____ #####
 
 class Hitbox:
-    def __init__(self, dictionnaire_objets:dict):
-        self.dict_hit = dictionnaire_objets
-        # regles de renvoie et de passage
-        self.mur = (False, "mur")
-        self.entitee = True
-        self.objets = True
-
-        self.largeur_calcul = 4
-
-        # on cree une map qui contient les pixels avec les murs pour ne pas surcharger les calculs a chaque fois
-        self.map = [[False]*505 for _ in range(505)]
-        for (x1, y1), (x2, y2) in self.dict_hit["murs"].values():
-            for y in range(y1, y2):
-                for x in range(x1, x2):
-                    self.map[y][x] = True
-
-
-    def update(self, entitee_nom:str, entitee_position:list[int, int]=[0, 0]) -> bool:
+    def __init__(self, dictionnaire_objets:dict) -> None:
         """
-            entitee_nom --> le nom de l'entitee
-            entitee_position --> la position de l'entitee [x, y]
-            lieu --> le nom du lieu ou l'entitee se trouve
-            renvoie un tuple avec soit
-            False si le mouvment n'est pas valide
-            soit True + "rien" si le mouvement est valide
-            soit True + "objet" + type_objet si on touche un objet
-            soit True + "entitee" si on touche un ennemis
+            initialise la class des hitbox
+        """
+
+        # regles de passage
+        self.regles_passages = {
+            "joueur" : ([1],[3, 4, 5, 8, 9]),
+            "monstre" : ([1], []),
+            "lumiere" : ([1], []),
+            "balle" : ([1, 3, 5, 8, 9], [])
+        }
+
+
+        # on cree la map en virtuel avec des murs pour calculer les hitbox comme un pro ;)
+        # les variables
+        self.dict_pos_entitee = {}
+        self.dict_pos_objets = {}
+        # cree la map vide
+        self.map = [[0]*506 for _ in range(506)]
+        # ajoute les objets
+        # rien = 0, mur = 1, joueur = 2, monstre = 3, objet = 4, joueur+monstre = 5, monstre+monstre = 6
+        for chose, dico in dictionnaire_objets.items():
+            for nom, ((x1, y1), (x2, y2)) in dico.items():
+                for y in range(y1, y2+1):
+                    for x in range(x1, x2+1):
+                        if chose == "murs":
+                            self.map[y][x] = 1
+                        elif chose == "joueur":
+                            self.map[y][x] = 2
+                        elif chose == "monstre":
+                            self.map[y][x] = 30
+                        elif chose == "objets":
+                            self.map[y][x] = 4
+                # ajouter les positions dans les dictionnaires pour permettre le deplacement
+                if chose == "entitees":
+                    self.dict_pos_entitee[nom] = [
+                        x1, y1,
+                        16, 16
+                    ]
+                elif chose == "objets":
+                    self.dict_pos_objets[nom] = [
+                        x1, y1,
+                        10, 10
+                    ]
+                elif chose == "joueur":
+                    self.player_x, self.player_y = x1, y1
+        
+        # dictionnaire qui permet de transformer le chiffre de la map en truc utilisable en privilegiant le plus important
+        self.transformation = {
+            0 : "rien",
+            1 : "mur",
+            2 : "joueur",
+            3 : "entitee",
+            4 : "objet",
+            5 : "entitee",
+            6 : "balle",
+            7 : "balle",
+            8 : "balle",
+            9 : "entitee"
+        }
+
+        return None
+
+
+
+
+    def update(self, entitee_nom:str, entitee_position:list) -> bool:
+        """
+            entitee_nom : le nom de l'entitee
+
+            entitee_position : la position de l'entitee [x, y]
+
+            renvoie un tuple qui contient :
+            - si le mouvement est valide
+            - la chose qui fait que ce mouvement est valide ou non
+            - si on touche quelque chose l'identifiant (id) de ce qu'on touche
         """
 
         # calculer les choses necessaires aux hitbox
-        if entitee_nom in ["joueur", "monstre"]:
-            largeur = hauteur = 16
-            entitee_hitbox = [
-                [entitee_position[0], entitee_position[1]],
-                [entitee_position[0]+16, entitee_position[1]+16]
-            ]
-        elif entitee_nom in ["lumiere"]:
+        if entitee_nom == "lumiere":
             largeur = hauteur = 1
             entitee_hitbox = [
                 [entitee_position[0], entitee_position[1]],
-                [entitee_position[0]+1, entitee_position[1]+1]
+                [entitee_position[0]+largeur, entitee_position[1]+hauteur]
             ]
-        elif entitee_nom in ["balle"]:
+        elif entitee_nom == "monstre":
+            largeur = hauteur = 16
+            entitee_hitbox = [
+                [entitee_position[0], entitee_position[1]],
+                [entitee_position[0]+largeur, entitee_position[1]+hauteur]
+            ]
+        elif entitee_nom == "joueur":
+            decalage_y = 1
+            largeur = 15
+            hauteur = 14
+            entitee_hitbox = [
+                [entitee_position[0], entitee_position[1]+decalage_y],
+                [entitee_position[0]+largeur, entitee_position[1]+hauteur+decalage_y]
+            ]
+        elif entitee_nom == "balle":
+            decalage_x = 8
+            decalage_y = 5
             largeur = 8
             hauteur = 5
             entitee_hitbox = [
-                [entitee_position[0]+8, entitee_position[1]+5],
-                [entitee_position[0]+16, entitee_position[1]+10]
+                [entitee_position[0]+decalage_x, entitee_position[1]+decalage_y],
+                [entitee_position[0]+decalage_x+largeur, entitee_position[1]+decalage_y+hauteur]
             ]
         else:
-            largeur = 16
-            hauteur = 16
+            largeur = hauteur = 16
+            entitee_hitbox = [
+                [entitee_position[0], entitee_position[1]],
+                [entitee_position[0]+largeur, entitee_position[1]+hauteur]
+            ]
 
 
         # calcul des hitbox
 
-        # les murs
-        # si c'est un objet qui a besoin d'un calcul complet
-        if entitee_nom in ["joueur", "monstre", "balle"]:
-            try:
-                retour = self.murs_complet(entitee_position, largeur, hauteur)
-            except:
-                retour = None
-            if retour != None:
+        # si la chose mesure plus d'un pixel de cote
+        if not largeur == hauteur == 1:
+            retour = self.hitbox_grande(entitee_hitbox, entitee_nom)
+            if retour[1] != "rien":
                 return retour
+
+        # si elle n'en mesure qu'un de cote
         else:
-            retour = self.murs_simple(entitee_position)
+            retour = self.hitbox_petite(entitee_position, entitee_nom)
             if retour != None:
                 return retour
 
-
-        # la lumiere s'arrete ici elle n'a pas besoin de faire plus de calculs
-        if entitee_nom == "lumiere":
-            return True, "rien"
-
-
-        # faire l'iteration pour les entities
-        retour = self.entitees(entitee_position, entitee_hitbox, entitee_nom)
-        if retour != None:
-            return retour, "entitee"
-
-            
-        # si l'entitee n'est pas le joueur alors elle n'a pas besoin des objets
-        if entitee_nom != "joueur":
-            return True, "rien"
-
-
-        # objet
-        retour = self.objet(entitee_hitbox)
-        if retour != None:
-            return retour
-        
 
 
         # la position est correcte
@@ -724,85 +737,396 @@ class Hitbox:
     
 
 
-    def murs_complet(self, entitee_position:list, largeur:int, hauteur:int) -> tuple:
+    def hitbox_grande(self, entitee_hitbox:list, entitee_nom:str) -> tuple:
         """
             calcule si un mur se trouve dans un objet completement
         """
-        # detection d'un mur dans le personnage
-        for decalage in range(self.largeur_calcul):
+        def fct(entitee_hitbox:list) -> bool:
+            # faire une liste avec tous les cas ou l'entitee n'a pas le droit de passer ou a des conditions
+            passage = self.regles_passages[entitee_nom][0] + self.regles_passages[entitee_nom][1]
+            trouve = False
+
             # pour les cotes haut et bas
-            for i in range(decalage, largeur - decalage):
-                # haut
-                if self.map[entitee_position[1] + decalage][entitee_position[0] + i] == True:
-                    return self.mur
-                # bas
-                if self.map[entitee_position[1] + hauteur - decalage*2][entitee_position[0] + i] == True:
-                    return self.mur
+            (x1, y1), (x2, y2) = entitee_hitbox
+            for x in range(x1, x2+1):
+                case = int(str(self.map[y1][x])[0])
+                if case in passage:
+                    trouve = True
+                    if case in self.regles_passages[entitee_nom][0]:
+                        return False, case
+                case = int(str(self.map[y2][x])[0])
+                if case in passage:
+                    trouve = True
+                    if case in self.regles_passages[entitee_nom][0]:
+                        return False, case
+
             # les cotes de droite et de gauche
-            for i in range(decalage, hauteur - decalage):
-                # gauche
-                if self.map[entitee_position[1] + i][entitee_position[0] + decalage] == True:
-                    return self.mur
-                # droite
-                if self.map[entitee_position[1] + i][entitee_position[0] + largeur - decalage] == True:
-                    return self.mur
-    
-        return None
+            for y in range(y1, y2+1):
+                case = int(str(self.map[y][x1])[0])
+                if case in passage:
+                    trouve = True
+                    if case in self.regles_passages[entitee_nom][0]:
+                        return False, case
+                case = int(str(self.map[y][x2])[0])
+                if case in passage:
+                    trouve = True
+                    if case in self.regles_passages[entitee_nom][0]:
+                        return False, case
+
+            # les cases de l'entitee ne sont pas sur des cases qui contiennent des actions
+            return not trouve, ("rien" if not trouve else case)
+
+        
+        # detection d'un mur dans l'entitee
+        # on imbrique une fonction pour centraliser les retours
+        (x1, y1), (x2, y2) = entitee_hitbox
+        if 0 <= x1 and x2 <= 505 and 0 <= y1 and y2 <= 505:
+            retour = fct(entitee_hitbox)
+            deplacement = retour[1] in self.regles_passages[entitee_nom][1]
+            if not retour[0] and entitee_nom == "joueur":
+                # calculer si le deplacement est possible
+                if retour[1] in [4, 9]:
+                    id_obj = self.recup_id_objet([x1, x2])
+                    return deplacement, "objet", id_obj
+                return deplacement, self.transformation[retour[1]]
+            elif not retour[0]:
+                return deplacement, self.transformation[retour[1]]
+
+        # hors de la map
+        else:
+            return False, "mur"
+
+        # si il n'y a rien
+        return True, "rien"
+
     
 
-    def murs_simple(self, entitee_position:list) -> tuple:
+
+
+
+
+    def hitbox_petite(self, entitee_position:list, entitee_nom:str) -> tuple:
         """
             realise un calcul simple pour savoir si un objet est dans un mur ou non
-            fonction utilie pour le calcul des lumieres qui peux provoquer des lags extremes
+            fonction utilie pour le calcul des lumieres qui peuvent provoquer des lags extremes
         """
-        if 0 <= entitee_position[0] < 500 and 0 <= entitee_position[1] < 500:
-            if self.map[entitee_position[1]][entitee_position[0]] == True:
-                return self.mur
+        x, y = entitee_position
+        if 0 <= x < 500 and 0 <= y < 500:
+            case = self.map[y][x]
+            if case != 0:
+                return self.regles_passages[entitee_nom][self.transformation[case]]
         else:
-            return self.mur
+            # hors de la map
+            return False, "mur"
         return None
     
     
 
-    def entitees(self, entitee_position:list, entitee_hitbox:list, entitee_nom:str) -> tuple:
-        """
-            calcule si l'objet est dans une entitee
-        """
-        for cle, objets in self.dict_hit["entitees"].items():
-            # si l'entite est nous meme
-            if cle == entitee_nom:
-                continue
 
-            # si un coin de l'entitee se trove dans l'objet
-            for point_hitbox in entitee_hitbox:
-                if objets[0][0] < point_hitbox[0] < objets[1][0] and objets[0][1] < point_hitbox[1] < objets[1][1]:
-                    return self.entitee, ("entitee" if cle != "joueur" else "joueur")
-            
-            # si un coin de l'objet se trouve dans l'entitee
-            for point_obj in objets:
-                if entitee_hitbox[0][0] < point_obj[0] < entitee_hitbox[1][0] and entitee_hitbox[0][1] < point_obj[1] < entitee_hitbox[1][1]:
-                    return self.entitee, ("entitee" if cle != "joueur" else "joueur")
+    def recup_id_objet(self, position:list) -> str:
+        """
+            recupere l'identifient de l'objet a partir d'une position et le supprimer
+        """
+        print("joueur")
+        for nom, (x, y, l, h) in self.dict_pos_objets.items():
+            if x-16 <= position[0] <= x+16 and y-16 <= position[1] <= y+16:
+                self.retire(nom, "objet")
+                print(f"ok : {nom}")
+                return nom
+        return "rien" # attention ca marche pas hein
+    
+
+
+    def deplace_monstre(self, nom:str, pos_x:int, pos_y:int) -> None:
+        """
+            deplace la position d'une entitee vers pos_x, pos_y
+        """
+        # recuperer les informations de l'entitee
+        x, y, l, h  = self.dict_pos_entitee[nom]
+        # retirer les cases de la grille virtuelle
+        self.retire(nom, "monstre")
+        # remettre les cases de la nouvelle position sur la nouvelle grille et dans le infos des entititeed
+        self.ajoute_monstre(nom, [pos_x, pos_y, l, h])
+
+
+
+    def deplace_joueur(self, pos_x:int, pos_y:int) -> None:
+        """
+            deplace le joueur vers la pos_x, pos_y
+        """
+        self.retire("", "joueur")
+        self.ajoute_joueur(pos_x, pos_y)
         
-        return None
+
+
+
+
+
+    def retire(self, nom:str, truc:str) -> None:
+        """
+            retire le truc de la map
+            (soit un "objet" soit une "entitee")
+        """
+        if truc == "monstre":
+            x, y, l, h  = self.dict_pos_entitee[nom]
+            for yi in range(y, y+h):
+                for xi in range(x, x+l):
+                    case = int(str(self.map[yi][xi])[0])
+                    if case in [3, 5, 8, 9]:
+                        nombre = int(str(self.map[yi][xi])[1:])-1
+                        if nombre == 0:
+                            if case == 3:
+                                case = 0
+                            elif case == 5:
+                                case = 2
+                            elif case == 8:
+                                case = 6
+                            elif case == 9:
+                                case = 4
+                        else:
+                            case = int(f"{case}{nombre}")
+                    self.map[yi][xi] = case
+            del self.dict_pos_entitee[nom]
+
+        elif truc == "objet":
+            x, y, l, h  = self.dict_pos_objets[nom]
+            for y in range(y, y+h):
+                for x in range(x, x+l):
+                    case = int(str(self.map[y][x])[0])
+                    if case == 4:
+                        case = 0
+                    elif case == 9:
+                        nombre = int(str(self.map[y][x])[1:])
+                        case = int(f"3{nombre}")
+                    self.map[y][x] = case
+            del self.dict_pos_objets[nom]
+
+        elif truc == "joueur":
+            for y in range(self.player_y, self.player_y+16):
+                for x in range(self.player_x, self.player_x+16):
+                    case = int(str(self.map[y][x])[0])
+                    if case == 2:
+                        case = 0
+                    elif case == 5:
+                        nombre = int(str(self.map[y][x])[1:])
+                        case = int(f"3{nombre}")
+                    elif case == 7:
+                        case == 6
+                    self.map[y][x] = case
+
     
 
-    def objet(self, entitee_hitbox:list):
+    def ajoute_monstre(self, nom:str, infos:list) -> None:
         """
-            detecte si l'entitee est sur un objet
+            ajoute une entitee sur la map ;
+            infos : [x, y, l, h]
         """
-        # faire l'iteration pour les objets
-        for objets in self.dict_hit["objets"].values():
-            # si un coin de l'entitee se trove dans l'objet
-            for point_hitbox in entitee_hitbox:
-                if objets[0][0] < point_hitbox[0] < objets[1][0] and objets[0][1] < point_hitbox[1] < objets[1][1]:
-                    return self.objets, "objets"
-            
-            # si un coin de l'objet se trouve dans l'entitee
-            for point_obj in objets:
-                if entitee_hitbox[0][0] < point_obj[0] < entitee_hitbox[1][0] and entitee_hitbox[0][1] < point_obj[1] < entitee_hitbox[1][1]:
-                    return self.objets, "objets"
+        self.dict_pos_entitee[nom] = infos.copy()
+        x, y, l, h  = infos
+        for yi in range(y, y+h+1):
+            for xi in range(x, x+l+1):
+                case = int(str(self.map[yi][xi])[0])
+                if case in [0, 2, 3, 4, 5, 6, 8, 9]:
+                    if case in [3, 5, 8, 9]:
+                        nombre = int(str(self.map[yi][xi])[1:])+1
+                        case = int(f"{case}{nombre}")
+                    else:
+                        if case == 0:
+                            case = 31
+                        elif case == 2:
+                            case = 51
+                        elif case == 4:
+                            case = 91
+                        elif case == 6:
+                            case = 81
+                    self.map[yi][xi] = case
+
+
+    def ajoute_joueur(self, pos_x:int, pos_y:int) -> None:
+        """
+            met le joueur sur la carte a la position definie
+        """
+        for y in range(pos_y, pos_y+17):
+            for x in range(pos_x, pos_x+17):
+                case = int(str(self.map[y][x])[0])
+                if case == 0:
+                    case = 2
+                elif case == 3:
+                    case = 50
+                elif case == 5:
+                    nombre = int(str(self.map[y][x])[1:])+1
+                    case = int(f"5{nombre}")
+                elif case == 6:
+                    case = 7
+                self.map[y][x] = case
                 
-        return None
+
+
+
+    
+    def recup_pos_monstre(self, nom:str) -> list:
+        """ renvoie la position du monstre """
+        return self.dict_pos_entitee[nom][0:2]
+
+
+
+
+
+
+
+
+
+
+
+
+
+##### _____ Player _____ #####
+
+class Player:
+    def __init__(self, hitbox:Hitbox, position:list):
+        # ses variables
+        self.x, self.y = position
+        self.balles = 3
+        self.vie = 3
+        self.sortie = 0
+        self.vie_temps = 0
+        # la classe qui gere les hitbox
+        self.hitbox = hitbox
+        self.arme_tir = "balle", False
+        # direction 0 : droite, 1 : bas, 2 : gauche, 3 : haut
+        self.direction = 0
+        self.vitesse = 2
+        # les positions pour que le perso bouge
+        self.pos_perso = [[16, 24], [0, 8], [16, 8], [0, 24]]
+        self.mega_player = False
+
+
+    def update(self):
+        # initialisations des variables au debut de chaque iteration
+        self.bouge = False
+        if self.vie_temps > 0:
+            self.vie_temps -= 1
+
+
+        # mouvements du joueur
+        # Haut
+        if pyxel.btn(pyxel.KEY_Z):
+            for _ in range(self.vitesse):
+                self.y -= 1
+                if not self.deplacement_valide():
+                    self.y += 1
+                else:
+                    self.bouge = True
+            self.direction = 3
+        # Bas
+        if pyxel.btn(pyxel.KEY_S):
+            for _ in range(self.vitesse):
+                self.y += 1
+                if not self.deplacement_valide():
+                    self.y -= 1
+                else:
+                    self.bouge = True
+            self.direction = 1
+        # Droite
+        if pyxel.btn(pyxel.KEY_D):
+            for _ in range(self.vitesse):
+                self.x += 1
+                if not self.deplacement_valide():
+                    self.x -= 1
+                else:
+                    self.bouge = True
+            self.direction = 0
+        # Gauche
+        if pyxel.btn(pyxel.KEY_Q):
+            for _ in range(self.vitesse):
+                self.x -= 1
+                if not self.deplacement_valide():
+                    self.x += 1
+                else:
+                    self.bouge = True
+            self.direction = 2
+
+        # si le joueur ne se deplace pas on doit quand meme verifier si un monstre ne touche pas le joueur
+        if not self.bouge:
+            self.deplacement_valide()
+        
+
+
+        # les actions du joueur
+        if pyxel.btnp(pyxel.MOUSE_BUTTON_LEFT):
+            if self.balles != 0:
+                self.balles -= 1
+                if self.mega_player == True:
+                    self.arme_tir = "explosion", True
+                else:
+                    self.arme_tir = "balle", True
+
+        return self.sortie
+            
+
+
+    def deplacement_valide(self):
+        """ renvoie si le deplacement est valide ou non """
+        # calculer si le deplacement est valide
+        retour = self.hitbox.update("joueur", [self.x, self.y])
+        
+        # si il ya a des actions a faire on les faits
+        if retour[1] == "objet":
+            self.objet(retour[2])
+        elif retour[1] == "entitee":
+            if self.vie_temps == 0:
+                self.vie -= 1
+                self.vie_temps = 30
+                if not self.vie > 0:
+                    self.sortie = -1
+        
+        if retour[0]:
+            self.hitbox.deplace_joueur(self.x, self.y)
+        return retour[0]
+        
+        
+
+
+
+    def draw(self) -> None:
+        """ affiche le personnage """
+        # le personnage
+        if self.bouge:
+            perso_nombre = self.calcul_nombre_temps(4, 2)
+        else:
+            perso_nombre = 3
+        pyxel.blt(
+            self.x,
+            self.y,
+            0,
+            self.pos_perso[perso_nombre][0],
+            self.pos_perso[perso_nombre][1],
+            (-16 if self.direction == 2 else 16),
+            16,
+            5,
+            rotate=((90 * self.direction) if (90 * self.direction) != 180 else 0)
+        )
+
+
+    def calcul_nombre_temps(self, nombre_max:int, vitesse:int=5) -> int:
+        """ calcul qui permet de faire l'annimation du personnage """
+        return pyxel.frame_count // vitesse % nombre_max
+    
+
+    def recup_ui(self) -> tuple:
+        """ renvoie les informations utiles pour afficher l'UI """
+        return self.balles, self.vie
+    
+
+    def objet(self, nom:str) -> None:
+        """ realise les actions necessaires si le joueur touche un objet """
+        # appliquer les reactions sur le joueur
+        if nom.startswith("balles"):
+            self.balles += 1
+        elif nom.startswith("vie"):
+            self.vie += 2
+        elif nom.startswith("sortie"):
+            self.sortie = 1
     
 
 
@@ -822,21 +1146,20 @@ class Hitbox:
 ##### _____ Getion des monstres _____ #####
 
 class GetionDesMonstres:
-    def __init__(self, hitbox:object):
+    def __init__(self, hitbox:Hitbox) -> None:
         """ construit sa liste de monstres avec ceux presents de base dans la liste hitbox """
         self.hitbox = hitbox
         self.liste_monstres = []
-        for nom, monstre in self.hitbox.dict_hit["entitees"].items():
-            if nom[0:7] == "monstre":
-                self.liste_monstres.append(Monstre(monstre[0][0], monstre[0][1], random.randint(0, 3), self.hitbox))
+        for nom, monstre in self.hitbox.dict_pos_entitee.items():
+            self.liste_monstres.append(Monstre(monstre[0], monstre[1], random.randint(0, 3), self.hitbox, nom))
     
 
-    def update(self):
+    def update(self) -> None:
         """ met a jour chaqun des monstres """
         for monstre in self.liste_monstres:
             monstre.update()
 
-    def draw(self):
+    def draw(self) -> None:
         """ affiche les monstres un par un avec une boucle for """
         for monstre in self.liste_monstres:
             monstre.draw()
@@ -856,17 +1179,22 @@ class GetionDesMonstres:
 ##### _____ Monstre _____ #####
 
 class Monstre:
-    def __init__(self, pos_x:int, pos_y:int, direction:int, hitbox:object):
+    def __init__(self, pos_x:int, pos_y:int, direction:int, hitbox:Hitbox, nom:str):
         self.x = pos_x
         self.y = pos_y
         self.direction = direction
         self.hitbox = hitbox
-        self.VITESSE = 3
+        self.nom = nom
+        self.VITESSE = 2
         # probabilite de tourner
         self.tourner = 50
 
-    def update(self,):
+
+
+    def update(self):
         """ le monstre doit se deplacer le plus vers le joueur possible si il rencontre un mur il va chercher un autre passage et avancer jusqu'a un autre mur """
+        # recuperer notre position au pres de hitbox
+        self.x, self.y = self.hitbox.recup_pos_monstre(self.nom)
         if self.direction == 0:
             self.x += self.VITESSE
             if not self.deplacement_valide():
@@ -875,7 +1203,6 @@ class Monstre:
                     self.direction = 3
                 else:
                     self.direction = 1
-            self.bouge = True
         if self.direction == 1:
             self.y += self.VITESSE
             if not self.deplacement_valide():
@@ -884,7 +1211,6 @@ class Monstre:
                     self.direction = 0
                 else:
                     self.direction = 2
-            self.bouge = True
         if self.direction == 2:
             self.x -= self.VITESSE
             if not self.deplacement_valide():
@@ -893,7 +1219,6 @@ class Monstre:
                     self.direction = 1
                 else:
                     self.direction = 3
-            self.bouge = True
         if self.direction == 3:
             self.y -= self.VITESSE
             if not self.deplacement_valide():
@@ -902,27 +1227,40 @@ class Monstre:
                     self.direction = 2
                 else:
                     self.direction = 0
-            self.bouge = True
+
+
+
+        # tourner aleatoirement pour plus de suspense
         if random.randint(0, self.tourner) == 0:
             self.direction = random.randint(0, 3)
+
+        # deplacer l'entitee dans la base des hitbox
+        
+        self.hitbox.deplace_monstre(self.nom, self.x, self.y)
         
 
 
     
     def deplacement_valide(self):
-        return self.hitbox.update("monstre", [self.x, self.y])[0]
-        
+        retour = self.hitbox.update("monstre", [self.x, self.y])
+        return retour[0]
+    
 
 
     def draw(self):
         pyxel.blt(
             self.x, self.y,
             0,
-            0, 136,
-            16, 16,
+            16*self.calcul_nombre_temps(4, 5),
+            136,
+            (-16 if self.direction == 2 else 16), 16,
             colkey=5,
             rotate=((90 * self.direction) if (90 * self.direction) != 180 else 0)
         )
+
+    
+    def calcul_nombre_temps(self, nombre_max:int, vitesse:int=5) -> int:
+        return pyxel.frame_count // vitesse % nombre_max
 
 
 
@@ -941,13 +1279,11 @@ class Monstre:
 # Pour calculer les cases eclairees on creera un rayon qu'on agrandira de 1 pixel a chaque iteration jusqu'a tomber sur une case de mur.
 
 class RayTracing:
-    def __init__(self, hitbox:object):
+    def __init__(self, hitbox:object, precision:int, angle:int, nombre_rayons:int):
         self.hitbox = hitbox
-        self.precision = 1
+        self.precision = precision
 
         # creer une liste avec tous les rayons a tester
-        angle = 90
-        nombre_rayons = 200
         decalage_angle = angle / nombre_rayons
         self.liste_angles = [-(angle/2) + i*decalage_angle for i in range(nombre_rayons)]
 
@@ -1026,14 +1362,81 @@ class RayTracing:
 
 
 
+
+
+
+
+
+
+
+##### _____ UI _____ #####
+
+class UI:
+    def __init__(self, personnage:object, cam_decors:object):
+        self.personnage = personnage
+        self.cam_decors = cam_decors
+
+
+    def update(self):
+        self.camera = self.cam_decors.recup_camera()
+        self.balles, self.vie = self.personnage.recup_ui()
+
+
+    def draw(self):
+        # calcul des variables
+        x, y = self.camera[0] + 206, self.camera[1]
+
+        ### affichage de l'ui
+        # le fond noir
+        pyxel.rect(
+            x,
+            y,
+            50,
+            256,
+            0
+        )
+
+        # les balles
+        pyxel.text(x+5, y+10, "balles :", 13)
+        pyxel.blt(
+            x+5,
+            y+20,
+            0,
+            (0 if self.balles > 0 else 112),
+            216,
+            16, 16,
+            5
+        )
+        if self.balles > 0:
+            pyxel.text(x+25, y+25, f"X {self.balles}", 13)
+
+        # la vie
+        pyxel.text(x+5, y+40, "vie :", 13)
+        pyxel.blt(
+            x+5,
+            y+50,
+            0,
+            48, 216,
+            15, 15,
+            5
+        )
+        pyxel.text(x+25, y+55, f"X {self.vie}", 13)
+
+
+
+
+
+
+
 # App
-# Player
 # arme
 # CamDecor
 # Hitbox
+# Player
 # GetionDesMontres
 # Monstres
 # ray tracing
+# UI
 
 
 
