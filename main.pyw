@@ -320,7 +320,7 @@ class CamDecors:
         # reajuster la camera en x
         if -5 <= x_player <= 100:
             self.camera[0] = -5
-        elif 422 <= x_player <= 500:
+        elif 397 <= x_player <= 500:
             self.camera[0] = 294
         else:
             self.camera[0] = x_player - 103
@@ -391,12 +391,12 @@ class CamDecors:
         # il manque les murs nords et ouest du a leur position donc on les rajoutes
         pyxel.rect(
             -5, -5,
-            500, 5,
+            505, 5,
             self.couleur_mur
         )
         pyxel.rect(
             -5, -5,
-            5, 500,
+            5, 505,
             self.couleur_mur
         )
                     
@@ -1398,14 +1398,6 @@ class RayTracing:
             for x, case in enumerate(ligne):
                 if not case:
                     pyxel.pset(x, y, 0)
-
-
-
-
-
-
-
-
 
 
 
