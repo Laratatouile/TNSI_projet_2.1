@@ -1051,7 +1051,7 @@ class Player:
         
 
         # changement d'arme
-        if pyxel.btnp(pyxel.KEY_E):
+        if pyxel.btnp(pyxel.KEY_E) or pyxel.btnp(pyxel.KEY_SPACE):
             self.arme_liste[0] += 1
             if self.arme_liste[0] == len(self.arme_liste[1]):
                 self.arme_liste[0] = 0
