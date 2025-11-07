@@ -2,9 +2,22 @@
 Projet 2.1 de NSI terminale
 
 
+# commmandes
+les fleches et zqsd pour bouger
+tirer avec le bouton gauche de la souris
+changer l'arme avec e
+
 
 Le jeu pyxel consiste a tuer les ennemis.
 C'est un jeu 2D avec possibilite de faire du ray tracing
+
+
+# contexte
+vous avez ete envleve par des aliens et vous devez vous echapper de la prison labyrinthe dans laquelle on vous enferme
+Trouvez la faille et echapez vous.
+
+
+
 
 
 

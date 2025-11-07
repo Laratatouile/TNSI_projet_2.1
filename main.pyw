@@ -1,5 +1,4 @@
 import pyxel
-import time
 import math
 import random
 
@@ -10,7 +9,9 @@ import random
 ##### _____ App _____ #####
 
 class App:
+    """ la classe de base """
     def __init__(self):
+        """ constructeur de la classe de base """
         # initialisation de pyxel
         pyxel.init(
                     256,
@@ -24,17 +25,20 @@ class App:
         # initialisation des variables
         self.dict_objets_murs = {
             "objets" : {
-                "sortie" : [(155, 395), (171, 411)],
-                "vie_0" : [(125, 155), (141, 161)],
-                "vie_1" : [(485, 160), (501, 176)],
-                "vie_2" : [(5, 275), (21, 291)],
-                "balle_0" : [(270, 100), (286, 116)],
-                "balle_1" : [(445, 30), (461, 46)],
-                "balle_2" : [(395, 310), (411, 326)],
-                "balle_3" : [(325, 365), (341, 381)],
-                "masse_0" : [(385, 305), (401, 321)],
-                "masse_1" : [(95, 185), (111, 201)],
-                "masse_2" : [(35, 395), (51, 411)]
+                "sortie" : [(155, 395), (165, 405)],
+                "vie_0" : [(125, 155), (135, 165)],
+                "vie_1" : [(485, 160), (495, 170)],
+                "vie_2" : [(5, 275), (15, 285)],
+                "balle_0" : [(270, 100), (280, 110)],
+                "balle_1" : [(445, 30), (455, 40)],
+                "balle_2" : [(395, 310), (405, 320)],
+                "balle_3" : [(325, 365), (335, 375)],
+                "masse_0" : [(385, 305), (395, 315)],
+                "masse_1" : [(95, 185), (105, 195)],
+                "masse_2" : [(35, 395), (45, 405)],
+                "baril_0" : [(5, 50), (14, 60)],
+                "baril_1" : [(120, 275), (129, 285)],
+                "baril_2" : [(465, 455), (464, 465)]
             },
             "murs" : {
                 # ceux du contour de la map
@@ -201,7 +205,7 @@ class App:
                 "monstre_11" : [(265, 450), (281, 466)]
             }
         }
-        self.endroit = "jeu"
+        self.endroit = "menu_debut"
 
 
         
@@ -212,7 +216,7 @@ class App:
             "on" : False,
             "precision" : 1,
             "angle" : 60,
-            "nombre_rayons" : 100
+            "nombre_rayons" : 74
         }
         plein_ecran = False
 
@@ -225,9 +229,10 @@ class App:
         self.cam_decors = CamDecors(self.dict_objets_murs)
         self.arme = Arme(self.hitbox)
         self.getion_monstres = GetionDesMonstres(self.hitbox)
-        if self.dict_ray_tracing["on"]:
-            self.ray_tracing = RayTracing(self.hitbox, self.dict_ray_tracing["precision"], self.dict_ray_tracing["angle"], self.dict_ray_tracing["nombre_rayons"])
+        self.ray_tracing = RayTracing(self.hitbox, self.dict_ray_tracing["precision"], self.dict_ray_tracing["angle"], self.dict_ray_tracing["nombre_rayons"])
         self.ui = UI(self.player, self.cam_decors)
+        self.menu_debut = MenuDebut(self)
+        self.menu_fin = MenuFin()
 
 
         # lancement de pyxel
@@ -238,10 +243,20 @@ class App:
 
 
     def update(self):
+        """ le update proncipal qui gere ce qui doit l'etre ou pas """
+        # dans le menu du debut
+        if self.endroit == "menu_debut":
+            self.menu_debut.update()
+        elif self.endroit == "menu_fin":
+            self.menu_fin.update()
+
+
         # si on joue
         if self.endroit == "jeu":
-            if self.player.update() in [-1, 1]:
-                self.endroit = "sortie"
+            retour = self.player.update()
+            if retour in [-1, 1]:
+                self.endroit = "menu_fin"
+                self.menu_fin.fin(retour == 1)
             self.getion_monstres.update()
             if self.player.arme_tir[0] == "explosion" and self.player.arme_tir[1] == True:
                 self.arme.tir(self.player.x, self.player.y, self.player.direction, "explosion")
@@ -253,23 +268,25 @@ class App:
             self.cam_decors.update(self.player.x, self.player.y, self.hitbox.dict_pos_entitee, self.hitbox.dict_pos_objets)
             self.ui.update()
 
+
+            # utilitaire d'impression de la map virtuelle
             if pyxel.btnp(pyxel.KEY_K):
                 with open("file.txt", "w") as fichier:
                     for layer in self.hitbox.map:
                         ligne = ""
                         for case in layer:
                             ligne += str(case)[0]
-                        fichier.write(ligne)    
+                        fichier.write(ligne)
 
-        # si on est sorti du labyrinthe
-        elif self.endroit == "sortie":
-            pyxel.quit()
+
+            
 
 
 
 
 
     def draw(self):
+        """ gere ce qui doit etre affiche ou pas """
         if self.endroit == "jeu":
             self.cam_decors.draw()
             self.getion_monstres.draw()
@@ -281,11 +298,13 @@ class App:
             self.player.draw()
             self.arme.draw()
             self.ui.draw()
-
-
-
-
-
+        
+        # les menus
+        elif self.endroit == "menu_debut":
+            self.menu_debut.draw()
+        elif self.endroit == "menu_fin":
+            self.menu_fin.draw()
+            
 
 
 
@@ -297,6 +316,7 @@ class App:
 
 class CamDecors:
     def __init__(self, dictionnaire_hitbox:dict):
+        """ constructeur de la classe decors """
         # plage_x, plage_y
         self.camera = [-5, -5]
         self.liste_pos_sortie = [32, 48, 64, 48]
@@ -313,6 +333,7 @@ class CamDecors:
 
 
     def update(self, x_player:int, y_player:int, dict_pos_entitee:dict, dict_pos_objets:dict) -> None:
+        """ met a jour les affichages """
         self.dict_pos_entitee = dict_pos_entitee
         self.dict_pos_objets = dict_pos_objets
 
@@ -336,6 +357,7 @@ class CamDecors:
 
 
     def draw(self):
+        """ affiche la map """
         # tout effacer
         pyxel.cls(5)
 
@@ -380,14 +402,23 @@ class CamDecors:
                     10, 10,
                     5
                 )
-        for y, ligne in enumerate(self.map):
-            for x, case in enumerate(ligne):
-                if case == 1:
-                    pyxel.rect(
-                        x, y,
-                        1, 1,
-                        self.couleur_mur
-                    )
+            elif nom.startswith("baril"):
+                pyxel.blt(
+                    x,
+                    y,
+                    0,
+                    192,
+                    112,
+                    16,
+                    16,
+                    5
+                )
+        # ne dessiner que la partie visible à l'écran
+        cam_x, cam_y = self.camera
+        for y in range(cam_y, min(cam_y + 256, 505)):
+            for x in range(cam_x, min(cam_x + 256, 505)):
+                if self.map[y][x]:
+                    pyxel.pset(x, y, self.couleur_mur)
         # il manque les murs nords et ouest du a leur position donc on les rajoutes
         pyxel.rect(
             -5, -5,
@@ -407,13 +438,13 @@ class CamDecors:
 
     
     def calcul_nombre_temps(self, nombre_max:int, vitesse:int=5) -> int:
+        """ fait un calcul pour afficher les annimations """
         return pyxel.frame_count // vitesse % nombre_max
     
 
     def recup_camera(self):
+        """ renvoie la position de la camera pour l'ui """
         return self.camera
-
-
 
 
 
@@ -692,7 +723,10 @@ class Hitbox:
                 for xi in range(x, x+l+1):
                     case = int(str(self.map[yi][xi])[0])
                     if case in [3, 5, 8, 9]:
-                        nombre = int(str(self.map[yi][xi])[1:])-1
+                        reste = str(self.map[yi][xi])[1:]
+                        if reste == '':
+                            reste = 1
+                        nombre = int(reste)-1
                         if nombre == 0:
                             if case == 3:
                                 case = 0
@@ -786,12 +820,12 @@ class Hitbox:
 
 
 
-
-
 ##### _____ Armes _____ #####
 
 class Arme:
+    """ classe des armes """
     def __init__(self, hitbox:Hitbox):
+        """ constructeur de la casse des armes """
         self.hitbox = hitbox
         self.vitesse = 5
         self.infos_tir = [0, 1, "balle"]
@@ -805,6 +839,7 @@ class Arme:
 
 
     def update(self, direction:int, player_pos:list):
+        """ met a jour l'arme et les axplostions """
         # les variebles
         self.direction = direction
         player_x, player_y = player_pos
@@ -813,7 +848,7 @@ class Arme:
         if self.infos_tir == None:
             return
         
-        if time.time() - self.infos_tir[0] >= 10:
+        if pyxel.frame_count - self.infos_tir[0] >= 300:
             return
 
 
@@ -903,14 +938,15 @@ class Arme:
 
 
     def draw(self):
+        """ affiche l'arme et les explosions """
         # si on tire en ce moment on affiche le feu du fusil
         if self.infos_tir != None:
             # affichage du feu
-            if time.time() - self.infos_tir[0] <= 0.5:
+            if pyxel.frame_count - self.infos_tir[0] <= 15:
                 pyxel.blt(self.position_feu_x,
                           self.position_feu_y,
                           0,
-                          (self.liste_positions_feu[0] if time.time() - self.infos_tir[0] <= 0.1 else (self.liste_positions_feu[1] if time.time() - self.infos_tir[0] <= 0.2 else (self.liste_positions_feu[2] if time.time() - self.infos_tir[0] <= 0.3 else self.liste_positions_feu[3]))),
+                          (self.liste_positions_feu[0] if pyxel.frame_count - self.infos_tir[0] <= 3 else (self.liste_positions_feu[1] if pyxel.frame_count - self.infos_tir[0] <= 6 else (self.liste_positions_feu[2] if pyxel.frame_count - self.infos_tir[0] <= 9 else self.liste_positions_feu[3]))),
                           16,
                           (-8 if self.direction == 2 else 8),
                           8,
@@ -923,7 +959,7 @@ class Arme:
             pyxel.blt(balle[0],
                         balle[1],
                         0,
-                        (32 if time.time() - balle[3] < 0.1 else (48 if time.time() - balle[3] < 0.3 else 64)),
+                        (32 if pyxel.frame_count - balle[3] < 3 else (48 if pyxel.frame_count - balle[3] < 9 else 64)),
                         56,
                         (-16 if balle[2] == 2 else 16),
                         16,
@@ -931,38 +967,48 @@ class Arme:
                         rotate=((90 * balle[2]) if (90 * balle[2]) != 180 else 0))
             
         # on affiche toutes les explosions
-        temps = time.time()
-        for boom in self.liste_explosions:
+        self.liste_positions_explosions = [128, 144, 160, 176, 192, 208, 224, 240]
+        liste_supp = []
+        for i, boom in enumerate(self.liste_explosions):
+            if boom[2] < pyxel.frame_count - 30:
+                liste_supp.append(i)
             pyxel.blt(
                 boom[0],
                 boom[1],
                 0,
-                128 + math.floor((temps - boom[2])*10)*16,
+                self.liste_positions_explosions[self.calcul_nombre_temps(7, 5, boom[2])],
                 32,
                 16,
                 16,
                 5
             )
 
+        for i in reversed(liste_supp):
+            self.liste_explosions.pop(i)
 
 
 
-    def explosion(self, x:int, y:int):
-        self.liste_explosions.append([x, y, time.time()])
+    def explosion(self, x:int, y:int) -> None:
+        """ cree une explosion """
+        self.liste_explosions.append([x, y, pyxel.frame_count])
 
 
 
     def tir(self, x:int, y:int, direction:int, type_tir:str):
-        # enregistrer les informations concernant le tir effectue
-        if time.time() - self.infos_tir[0] > 0.5:
-            self.infos_tir = [time.time(), direction]
+        """ enregistrer les informations concernant le tir effectue """
+        if pyxel.frame_count - self.infos_tir[0] > 0.5:
+            self.infos_tir = [pyxel.frame_count, direction]
             if direction in [0, 2]:
-                self.liste_balles.append([x, y-1, direction, time.time(), type_tir])
+                self.liste_balles.append([x, y-1, direction, pyxel.frame_count, type_tir])
             elif direction == 1:
-                self.liste_balles.append([x, y+8, direction, time.time(), type_tir])
+                self.liste_balles.append([x, y+8, direction, pyxel.frame_count, type_tir])
             else :
-                self.liste_balles.append([x, y-12, direction, time.time(), type_tir])
-
+                self.liste_balles.append([x, y-12, direction, pyxel.frame_count, type_tir])
+                
+    
+    def calcul_nombre_temps(self, nombre_max:int, vitesse:int=5, frame_base:int=0) -> int:
+        """ calcul qui permet de faire l'annimation du personnage """
+        return (pyxel.frame_count - frame_base) // vitesse % nombre_max
 
 
 
@@ -971,6 +1017,7 @@ class Arme:
 
 class Player:
     def __init__(self, hitbox:Hitbox, position:list):
+        """ initialise le joueur """
         # ses variables
         self.x, self.y = position
         self.balles = 3
@@ -990,7 +1037,10 @@ class Player:
         self.frappe = 0
 
 
-    def update(self):
+    def update(self) -> bool:
+        """
+            calcule le deplacement les tirs et tout ce qui provient du joueur
+        """
         # initialisations des variables au debut de chaque iteration
         self.bouge = False
         if self.vie_temps > 0:
@@ -1013,7 +1063,7 @@ class Player:
         # mouvements du joueur
         # Haut
         if self.frappe == 0:
-            if pyxel.btn(pyxel.KEY_Z):
+            if pyxel.btn(pyxel.KEY_Z) or pyxel.btn(pyxel.KEY_UP):
                 for _ in range(self.vitesse):
                     self.y -= 1
                     if not self.deplacement_valide():
@@ -1022,7 +1072,7 @@ class Player:
                         self.bouge = True
                 self.direction = 3
             # Bas
-            if pyxel.btn(pyxel.KEY_S):
+            if pyxel.btn(pyxel.KEY_S) or pyxel.btn(pyxel.KEY_DOWN):
                 for _ in range(self.vitesse):
                     self.y += 1
                     if not self.deplacement_valide():
@@ -1031,7 +1081,7 @@ class Player:
                         self.bouge = True
                 self.direction = 1
             # Droite
-            if pyxel.btn(pyxel.KEY_D):
+            if pyxel.btn(pyxel.KEY_D) or pyxel.btn(pyxel.KEY_RIGHT):
                 for _ in range(self.vitesse):
                     self.x += 1
                     if not self.deplacement_valide():
@@ -1040,7 +1090,7 @@ class Player:
                         self.bouge = True
                 self.direction = 0
             # Gauche
-            if pyxel.btn(pyxel.KEY_Q):
+            if pyxel.btn(pyxel.KEY_Q) or pyxel.btn(pyxel.KEY_LEFT):
                 for _ in range(self.vitesse):
                     self.x -= 1
                     if not self.deplacement_valide():
@@ -1059,12 +1109,14 @@ class Player:
         if pyxel.btnp(pyxel.MOUSE_BUTTON_LEFT):
             if self.arme_selec == "masse":
                 if self.masse != 0:
+                    self.masse -= 1
                     self.frappe = 7
                     self.frappe_unite()
             elif self.arme_selec == "fusil":
                 if self.balles != 0:
                     self.balles -= 1
                     if self.mega_player == True:
+                        self.mega_player = False
                         self.arme_tir = "explosion", True
                     else:
                         self.arme_tir = "balle", True
@@ -1167,6 +1219,8 @@ class Player:
             self.sortie = 1
         elif nom.startswith("masse"):
             self.masse += 1
+        elif nom.startswith("baril"):
+            self.mega_player = True
 
 
     def frappe_unite(self) -> None:
@@ -1182,8 +1236,6 @@ class Player:
             y -= 16
         
         self.hitbox.recup_id([x, y], "monstre")
-
-
 
 
 
@@ -1219,11 +1271,10 @@ class GetionDesMonstres:
 
 
 
-
-
 ##### _____ Monstre _____ #####
 
 class Monstre:
+    """ la classe qui fait les monstres """
     def __init__(self, pos_x:int, pos_y:int, direction:int, hitbox:Hitbox, nom:str):
         self.x = pos_x
         self.y = pos_y
@@ -1287,12 +1338,14 @@ class Monstre:
 
     
     def deplacement_valide(self):
+        """ renvoie si le deplacement est valide ou non """
         retour = self.hitbox.update("monstre", [self.x, self.y])
         return retour[0]
     
 
 
     def draw(self):
+        """ affiche le monstre """
         pyxel.blt(
             self.x, self.y,
             0,
@@ -1305,6 +1358,7 @@ class Monstre:
 
     
     def calcul_nombre_temps(self, nombre_max:int, vitesse:int=5) -> int:
+        """ renvoie un int pour les animations """
         return pyxel.frame_count // vitesse % nombre_max
 
 
@@ -1323,7 +1377,9 @@ class Monstre:
 # Pour calculer les cases eclairees on creera un rayon qu'on agrandira de 1 pixel a chaque iteration jusqu'a tomber sur une case de mur.
 
 class RayTracing:
+    """ classe du ray tracing """
     def __init__(self, hitbox:Hitbox, precision:int, angle:int, nombre_rayons:int):
+        """ initialise la classe """
         self.hitbox = hitbox
         self.precision = precision
 
@@ -1336,6 +1392,7 @@ class RayTracing:
     
 
     def update(self, pos_perso:list, direction:int):
+        """ calcule la map visible """
         # calculer la position de depart de la lumiere
         if direction == 0:
             pos_perso[0] += 15
@@ -1349,7 +1406,9 @@ class RayTracing:
             pos_perso[0] += 7
 
 
-        self.g_lumiere = [[False]*505 for _ in range(505)]
+        for y in range(505):
+            for x in range(505):
+                self.g_lumiere[y][x] = False
         x, y = pos_perso
         # pour chaque rayon
         for angle in self.liste_angles:
@@ -1394,6 +1453,7 @@ class RayTracing:
 
 
     def draw(self):
+        """ affiche la map """
         for y, ligne in enumerate(self.g_lumiere):
             for x, case in enumerate(ligne):
                 if not case:
@@ -1401,24 +1461,24 @@ class RayTracing:
 
 
 
-
-
-
-
 ##### _____ UI _____ #####
 
 class UI:
+    """ classe de l'ui """
     def __init__(self, personnage:Player, cam_decors:CamDecors):
+        """ construit la classe des ui """
         self.personnage = personnage
         self.cam_decors = cam_decors
 
 
     def update(self):
+        """ recupere les infos pour l'ui """
         self.camera = self.cam_decors.recup_camera()
         self.balles, self.vie, self.masse = self.personnage.recup_ui()
 
 
     def draw(self):
+        """ dessine l'ui """
         # calcul des variables
         x, y = self.camera[0] + 206, self.camera[1]
 
@@ -1472,6 +1532,163 @@ class UI:
 
 
 
+##### _____ Menu Debut _____ #####
+
+class MenuDebut:
+    def __init__(self, maitre:App):
+        """
+            constructeur de la classe du menu du debut
+        """
+        self.maitre = maitre
+        self.boutons = {
+            "ray_tracing" : {
+                "actif" : False,
+                "x" : 88,
+                "y" : 20,
+                "width" : 80,
+                "height" : 16,
+                "texte" : "ray tracing",
+                "activation" : "bool"
+            },
+            "jouer" : {
+                "actif" : False,
+                "x" : 88,
+                "y" : 50,
+                "width" : 80,
+                "height" : 16,
+                "texte" : "jouer",
+                "activation" : "one"
+            }
+        }
+        self.graphismes = {
+            "largeur_bordure" : 2,
+            "couleur_active" : {
+                "arriere_plan" : 11,
+                "bordure" : 3,
+                "texte" : 0
+            },
+            "couleur_desactive" : {
+                "arriere_plan" : 8,
+                "bordure" : 4,
+                "texte" : 0
+            },
+            "couleur_non_bool" : {
+                "arriere_plan" : 15,
+                "bordure" : 14,
+                "texte" : 0
+            }
+        }
+        pyxel.mouse(True)
+
+    
+    def update(self) -> None:
+        """
+            realise les calculs necessaires a l'affichage du menu
+        """
+        pyxel.cls(0)
+
+        self.x = pyxel.mouse_x
+        self.y = pyxel.mouse_y
+        bouton = None
+
+
+        # si le joueur clique
+        if pyxel.btnr(pyxel.MOUSE_BUTTON_LEFT):
+            # detecion du bouton sur lequel est la souris
+            for bouton_tmp, options in self.boutons.items():
+                if options["x"] <= self.x <= options["x"]+options["width"] and options["y"] <= self.y <= options["y"]+options["height"]:
+                    bouton = bouton_tmp
+                    if options["activation"] == "bool":
+                        options["actif"] = not options["actif"]
+                    break
+
+
+        if bouton != None:
+            if bouton == "jouer":
+                pyxel.mouse(False)
+                self.maitre.dict_ray_tracing["on"] = self.boutons["ray_tracing"]["actif"]
+                self.maitre.endroit = "jeu"
+
+
+
+
+
+
+    def draw(self) -> None:
+        """
+            affiche le menu du debut
+        """
+        # pour chaque bouton
+        for options in self.boutons.values():
+            # on affiche les bordures
+            pyxel.rect(
+                options["x"], options["y"],
+                options["width"], options["height"],
+                self.graphismes[("couleur_non_bool" if options["activation"] == "one" else "couleur_active" if options["actif"] else "couleur_desactive")]["bordure"]
+            )
+            # on affiche l'arriere_plan
+            pyxel.rect(
+                options["x"] + self.graphismes["largeur_bordure"],
+                options["y"] + self.graphismes["largeur_bordure"],
+                options["width"] - self.graphismes["largeur_bordure"]*2,
+                options["height"] - self.graphismes["largeur_bordure"]*2,
+                self.graphismes[("couleur_non_bool" if options["activation"] == "one" else "couleur_active" if options["actif"] else "couleur_desactive")]["arriere_plan"]
+            )
+            # le texte
+            decalage_x = options["width"]//2-len(options["texte"])*2
+
+            pyxel.text(
+                options["x"] + decalage_x,
+                options["y"] + 5,
+                options["texte"],
+                self.graphismes[("couleur_non_bool" if options["activation"] == "one" else ("couleur_active" if options["actif"] else "couleur_desactive"))]["texte"]
+            )
+
+
+
+##### ____ Menu Fin _____ #####
+
+class MenuFin:
+    def fin(self, victoire:bool) -> None:
+        """
+            demarre le menu de la fin
+        """
+        pyxel.mouse(True)
+        self.vic = victoire
+        pyxel.camera(0, 0)
+
+    
+    def update(self):
+        pass
+
+
+
+
+    def draw(self):
+        """ dessine le menu """
+        pyxel.cls(0)
+        
+        pyxel.text(
+            88, 20,
+            f"Vous avez {("gagne" if self.vic else "perdu")}",
+            11
+        )
+        pyxel.text(
+            60, 40,
+            "en tout cas merci d'avoir joue",
+            6
+        )
+        pyxel.text(
+            60, 50,
+            "et d'avoir passe un bon moment",
+            6
+        )
+        pyxel.text(
+            88, 70,
+            "Appuyez sur echap",
+            14
+        )
+
 
 
 
@@ -1483,8 +1700,10 @@ class UI:
 # Player
 # GetionDesMontres
 # Monstres
-# ray tracing
+# RayTracing
 # UI
+# MenuDebut
+# MenuFin
 
 
 
